@@ -184,9 +184,27 @@ module.exports = {
             }
 
                         // =====================================================================
-            // 🔒 FIX DEFINITIVO: BOTÃO INDEFERIDO COM DEFERUPDATE
+            // 🔒 RECONSTRUÇÃO SEGURA: BOTÃO INDEFERIDO COM TRAVA DE SEGURANÇA
             // =====================================================================
-               if (dadosCaso && canalResultados) {
+            if (customId === 'btn_final_indeferido') {
+                const dadosCaso = memoriaFechamento.get(channelId);
+
+                // 1. TRAVA DE SEGURANÇA: Se o corregedor não marcou os envolvidos no menu antes, impede o travamento
+                if (!dadosCaso) {
+                    return await interaction.reply({
+                        content: "❌ **Erro:** Você precisa selecionar ao menos 1 envolvido no menu de usuários antes de definir o veredicto.",
+                        ephemeral: true
+                    }).catch(() => {});
+                }
+
+                // 2. Avisa o Discord que começou o processamento pesado
+                await interaction.deferUpdate().catch(() => {});
+
+                const canalResultados = guild.channels.cache.get(ID_CANAL_RESULTADOS);
+                const numeroFinalDoCaso = obterProximoCaso();
+                const ID_CANAL_TRANSCRIPTS = "1565194110199930971";
+
+                if (canalResultados) {
                     const idMembro = dadosCaso.envolvidos;
                     
                     // --- CASO 1: SE FOR UM TICKET DE REVOGAÇÃO NEGADA ---
@@ -201,7 +219,7 @@ module.exports = {
 
                         await canalResultados.send({ content: `🔔 **Notificação de Julgamento:** <@${idMembro}>\n\n${textoMensagemIndeferido}` }).catch(err => console.error(err));
 
-                        // 📝 LOG SIMPLIFICADO NO CANAL DA CORREGEDORIA (REVOGAÇÃO NEGADA)
+                        // Log Simplificado na Corregedoria (Revogação Rejeitada)
                         try {
                             const canalLogsEspecifico = await guild.channels.fetch('1529134407330562239').catch(() => null);
                             if (canalLogsEspecifico) {
@@ -233,7 +251,7 @@ module.exports = {
 
                         await canalResultados.send({ content: `🔔 **Notificação de Arquivamento:** ${listaMencionados}\n\n${textoMensagemIndeferido}` }).catch(err => console.error(err));
 
-                        // 📝 LOG SIMPLIFICADO NO CANAL DA CORREGEDORIA (DENÚNCIA ARQUIVADA)
+                        // Log Simplificado na Corregedoria (Denúncia Arquivada)
                         try {
                             const canalLogsEspecifico = await guild.channels.fetch('1529134407330562239').catch(() => null);
                             if (canalLogsEspecifico) {
@@ -249,6 +267,37 @@ module.exports = {
                         } catch (err) { console.error(err); }
                     }
                 }
+
+                // Transcripts gerados em background
+                try {
+                    const mensagens = await interaction.channel.messages.fetch({ limit: 100 });
+                    let conteudoTexto = `=== TRANSCRIPT OFICIAL DE ATENDIMENTO - CASO INDEFERIDO #${numeroFinalDoCaso} ===\n`;
+                    const msgOrdenadas = mensagens.reverse();
+                    msgOrdenadas.forEach(m => { conteudoTexto += `[${m.createdAt.toLocaleTimeString('pt-BR')}] ${m.author.tag}: ${m.content}\n`; });
+                    const bufferTexto = Buffer.from(conteudoTexto, 'utf-8');
+                    const canalAuditoria = guild.channels.cache.get(ID_CANAL_TRANSCRIPTS);
+                    if (canalAuditoria) {
+                        await canalAuditoria.send({ 
+                            content: `📁 **Histórico:** Caso \`#${numeroFinalDoCaso}\` finalizado por ${interaction.user}.`, 
+                            files: [{ attachment: bufferTexto, name: `transcript-indeferido-${numeroFinalDoCaso}.txt` }] 
+                        }).catch(err => console.error(err));
+                    }
+                } catch (e) { console.error(e); }
+
+                // 3. Responde na tela de forma limpa usando editReply
+                await interaction.editReply({ 
+                    content: `🔒 **Caso Indeferido com Sucesso!** Relatório publicado e enviado para a auditoria.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, 
+                    embeds: [], 
+                    components: [] 
+                }).catch(() => {});
+
+                memoriaFechamento.delete(channelId);
+
+                // 4. Inicia os 10 segundos para deletar o canal
+                return setTimeout(() => {
+                    if (interaction.channel) interaction.channel.delete().catch(() => {});
+                }, 10000);
+            }
             // =====================================================================
 
         // --- LÓGICA DE CRIAÇÃO DE NOVOS TICKETS PRIVADOS ---
