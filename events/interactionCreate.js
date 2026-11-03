@@ -449,12 +449,11 @@ module.exports = {
             const ID_CARGO_GERAL_ADV = "13947740627062874"; 
             const ID_CANAL_TRANSCRIPTS = "1565194110199930971";
 
-            const dicionarioAdvs = {
-                "1394767862174060705": "Advertência Verbal (Vigência Obrigatória: 7 dias)",
-                "1394767901218836521": "Advertência Escrita Nível 1 (Vigência obrigatória: 10 dias corridos)",
-                "1394767944176631969": "Advertência Geral Nível 2 (Vigência obrigatória: 15 dias corridos)",
-                "1511367174307188866": "Suspensão de Atividades Administrativas (Ficha sob análise técnica, sujeito a desligamento imediato)"
-            };
+            // Procura dinamicamente os nomes dos cargos direto no config.json usando os IDs selecionados (values)
+            const textoAdvsMarcadas = values.map(id => {
+                const punicaoNoConfig = config.opcoesPunicao.find(opcao => opcao.value === id);
+                return `• ${punicaoNoConfig ? punicaoNoConfig.label : id}`;
+            }).join('\n');
 
             const cargosMarcados = dadosCaso.cargosSelecionados || [];
 
