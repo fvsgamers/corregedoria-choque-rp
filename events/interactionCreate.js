@@ -183,57 +183,85 @@ module.exports = {
                 return interaction.update({ content: '🚨 **Selecione as punições aplicáveis abaixo:**', embeds: [], components: [rowAdvs] });
             }
 
-            // BOTÃO: Veredicto Indeferido (Texto Elaborado + Transcript + Delete em 10s)
+                        // =====================================================================
+            // 🔒 FIX DEFINITIVO: BOTÃO INDEFERIDO COM DEFERUPDATE
+            // =====================================================================
             if (customId === 'btn_final_indeferido') {
+                // 1. Avisa IMEDIATAMENTE o Discord para não dar erro de tempo (Timeout)
+                await interaction.deferUpdate().catch(() => {});
+
                 const dadosCaso = memoriaFechamento.get(channelId);
-                const canalResultados = guild.channels.cache.get(ID_CANAL_RESULTS) || guild.channels.cache.get(ID_CANAL_RESULTADOS);
+                const canalResultados = guild.channels.cache.get(ID_CANAL_RESULTADOS);
                 const numeroFinalDoCaso = obterProximoCaso();
                 const ID_CANAL_TRANSCRIPTS = "1565194110199930971";
 
                 if (dadosCaso && canalResultados) {
-                    const idMembro = dadosCaso.envolvidos[0];
+                    const idMembro = dadosCaso.envolvidos;
                     
                     // Se for um caso de revogação negada (Indeferida)
                     if (dadosCaso.isRevogacao) {
                         const textoMensagemIndeferido = 
-                                                    `### 🏛️ REVOGAÇÃO INDEFERIDA + #${numeroFinalDoCaso}\n` +
-                        `> **STATUS JURÍDICO:** CONTESTAÇÃO REJEITADA (PUNIÇÃO MANTIDA)\n\n` +
-                        `A Corregedoria Geral avaliou os fundamentos do pedido de revisão e determinou o seu **INDEFERIMENTO**. As provas funcionais aplicadas originalmente são válidas e permanecem ativas.\n\n` +
-                        `👤 **Colaborador:** <@${interaction.user.id}>\n` +
-                        `⚠️ **Manutenção da Sanção:** <@&${dadosCaso.cargoParaRemover}>\n\n` +
-                        `✍️ *Relator Responsável:* <@${interaction.user.id}> — <t:${Math.floor(Date.now() / 1000)}:R>`;
+                            `### 🏛️ REVOGAÇÃO INDEFERIDA + #${numeroFinalDoCaso}\n` +
+                            `> **STATUS JURÍDICO:** CONTESTAÇÃO REJEITADA (PUNIÇÃO MANTIDA)\n\n` +
+                            `A Corregedoria Geral avaliou os fundamentos do pedido de revisão e determinou o seu **INDEFERIMENTO**. As provas funcionais aplicadas originalmente são válidas e permanecem ativas.\n\n` +
+                            `👤 **Colaborador:** <@${idMembro}>\n` +
+                            `⚠️ **Manutenção da Sanção:** <@&${dadosCaso.cargoParaRemover}>\n\n` +
+                            `✍️ *Relator Responsável:* \`${interaction.user.tag}\` — <t:${Math.floor(Date.now() / 1000)}:R>`;
 
-                    await canalResultados.send({ content: `🔔 **Notificação de Julgamento:** <@${idMembro}>\n\n${textoMensagemIndeferido}` });
-                } else {
-                    // Denúncia comum arquivada
-                    const listaMencionados = dadosCaso.envolvidos.map(id => `<@${id}>`).join(', ');
-                    const textoMensagemIndeferido = 
-                        `### 🏛️ INDEFERIDO + #${numeroFinalDoCaso}\n` +
-                        `> **STATUS JURÍDICO:** SENTENÇA INDEFERIDA (IMPROCEDENTE)\n\n` +
-                        `A Corregedoria Geral da Cidade, após análise detida dos fatos narrados e verificação da idoneidade material trazida aos autos do chamado, declara o processo **ARQUIVADO**.\n\n` +
-                        `👤 **Membros Citados:** ${listaMencionados}\n\n` +
-                        `⚠️ **Fundamentação da Recusa:**\n` +
-                        `A postulação não reuniu condições minima de admissibilidade, sendo rejeitada por **total ausência de elementos probatórios concretos** ou por incompatibilidade técnica com o regimento.\n\n` +
-                        `✍️ *Relator Responsável:* \`${interaction.user.tag}\` — <t:${Math.floor(Date.now() / 1000)}:R>`;
+                        await canalResultados.send({ content: `🔔 **Notificação de Julgamento:** <@${idMembro}>\n\n${textoMensagemIndeferido}` }).catch(err => console.error(err));
+                    } else {
+                        // Denúncia comum arquivada
+                        const listaMencionados = Array.isArray(dadosCaso.envolvidos) 
+                            ? dadosCaso.envolvidos.map(id => `<@${id}>`).join(', ') 
+                            : `<@${dadosCaso.envolvidos}>`;
 
-                    await canalResultados.send({ content: `🔔 **Notificação de Arquivamento:** ${listaMencionados}\n\n${textoMensagemIndeferido}` });
+                        const textoMensagemIndeferido = 
+                            `### 🏛️ INDEFERIDO + #${numeroFinalDoCaso}\n` +
+                            `> **STATUS JURÍDICO:** SENTENÇA INDEFERIDA (IMPROCEDENTE)\n\n` +
+                            `A Corregedoria Geral da Cidade, após análise detida dos fatos narrados e verificação da idoneidade material trazida aos autos do chamado, declara o processo **ARQUIVADO**.\n\n` +
+                            `👤 **Membros Citados:** ${listaMencionados}\n\n` +
+                            `⚠️ **Fundamentação da Recusa:**\n` +
+                            `A postulação não reuniu condições mínimas de admissibilidade, sendo rejeitada por **total ausência de elementos probatórios concretos** ou por incompatibilidade técnica.\n\n` +
+                            `✍️ *Relator Responsável:* \`${interaction.user.tag}\` — <t:${Math.floor(Date.now() / 1000)}:R>`;
+
+                        await canalResultados.send({ content: `🔔 **Notificação de Arquivamento:** ${listaMencionados}\n\n${textoMensagemIndeferido}` }).catch(err => console.error(err));
+                    }
                 }
+
+                // Gerador de Transcript roda em segundo plano sem travar a interface do usuário
+                try {
+                    const mensagens = await interaction.channel.messages.fetch({ limit: 100 });
+                    let conteudoTexto = `=== TRANSCRIPT OFICIAL DE ATENDIMENTO - CASO INDEFERIDO #${numeroFinalDoCaso} ===\n`;
+                    const msgOrdenadas = mensagens.reverse();
+                    msgOrdenadas.forEach(m => { conteudoTexto += `[${m.createdAt.toLocaleTimeString('pt-BR')}] ${m.author.tag}: ${m.content}\n`; });
+                    const bufferTexto = Buffer.from(conteudoTexto, 'utf-8');
+                    const canalAuditoria = guild.channels.cache.get(ID_CANAL_TRANSCRIPTS);
+                    if (canalAuditoria) {
+                        await canalAuditoria.send({ 
+                            content: `📁 **Histórico:** Caso \`#${numeroFinalDoCaso}\` finalizado por ${interaction.user}.`, 
+                            files: [{ attachment: bufferTexto, name: `transcript-indeferido-${numeroFinalDoCaso}.txt` }] 
+                        }).catch(err => console.error(err));
+                    }
+                } catch (e) { console.error(e); }
+
+                // 2. Modifica a mensagem na tela usando editReply (já que demos deferUpdate no início)
+                await interaction.editReply({ 
+                    content: `🔒 **Caso Indeferido com Sucesso!** Relatório publicado e enviado para a auditoria.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, 
+                    embeds: [], 
+                    components: [] 
+                }).catch(() => {});
+
+                memoriaFechamento.delete(channelId);
+
+                // 3. Cronômetro seguro de 10 segundos para deletar o canal
+                return setTimeout(() => {
+                    if (interaction.channel) {
+                        interaction.channel.delete().catch(() => {});
+                    }
+                }, 10000);
             }
+            // =====================================================================
 
-            try {
-                const mensagens = await interaction.channel.messages.fetch({ limit: 100 });
-                let conteudoTexto = `=== TRANSCRIPT OFICIAL DE ATENDIMENTO - CASO INDEFERIDO #${numeroFinalDoCaso} ===\n`;
-                const msgOrdenadas = mensagens.reverse();
-                msgOrdenadas.forEach(m => { conteudoTexto += `[${m.createdAt.toLocaleTimeString('pt-BR')}] ${m.author.tag}: ${m.content}\n`; });
-                const bufferTexto = Buffer.from(conteudoTexto, 'utf-8');
-                const canalAuditoria = guild.channels.cache.get(ID_CANAL_TRANSCRIPTS);
-                if (canalAuditoria) await canalAuditoria.send({ content: `📁 **Histórico:** Caso \`#${numeroFinalDoCaso}\` finalizado por ${interaction.user}.`, files: [{ attachment: bufferTexto, name: `transcript-${numeroFinalDoCaso}.txt` }] });
-            } catch (e) { console.error(e); }
-
-            await interaction.update({ content: `🔒 **Caso Indeferido com Sucesso!** Relatório publicado e enviado para a auditoria.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, embeds: [], components: [] });
-            memoriaFechamento.delete(channelId);
-            return setTimeout(() => interaction.channel.delete().catch(() => {}), 10000);
-        }
 
         // --- LÓGICA DE CRIAÇÃO DE NOVOS TICKETS PRIVADOS ---
         let nomeCanal = "";
