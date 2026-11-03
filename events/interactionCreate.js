@@ -429,13 +429,17 @@ module.exports = {
         }
                 // --- 4. RECEBIMENTO DO FORMULÁRIO (MODAL) ---
                 // =====================================================================
-        // 🔒 FIX: RECEBIMENTO DO FORMULÁRIO (MODAL) + ENCERRAMENTO COM CRONÔMETRO
+        // 🔒 FIX DEFINITIVO: MODAL COM DEFERREPLY PARA ELIMINAR O ERRO DE TEMPO
         // =====================================================================
         if (interaction.isModalSubmit() && interaction.customId === 'modal_motivo_punicao') {
             const { channelId, guild } = interaction;
+            
+            // 1. Avisa IMEDIATAMENTE o Discord que o formulário foi recebido (Evita o erro de tempo)
+            await interaction.deferReply().catch(() => {});
+
             const dadosCaso = memoriaFechamento.get(channelId);
             if (!dadosCaso) {
-                return interaction.reply({ content: "❌ Dados do caso expiraram ou não foram encontrados.", ephemeral: true });
+                return interaction.editReply({ content: "❌ Dados do caso expiraram ou não foram encontrados." });
             }
 
             // Captura o motivo obrigatório do formulário
@@ -451,11 +455,11 @@ module.exports = {
             }
 
             if (!canalResultados) {
-                return interaction.reply({ content: "❌ Erro: O canal de resultados não pôde ser localizado.", ephemeral: true });
+                return interaction.editReply({ content: "❌ Erro: O canal de resultados não pôde ser localizado." });
             }
 
             const numeroFinalDoCaso = obterProximoCaso();
-            //const ID_CARGO_GERAL_ADV = "13947740627062874"; 
+            const ID_CARGO_GERAL_ADV = "13947740627062874"; 
             const ID_CANAL_TRANSCRIPTS = "1565194110199930971";
 
             const cargosMarcados = dadosCaso.cargosSelecionados || [];
@@ -464,7 +468,7 @@ module.exports = {
                 try {
                     const membroAlvo = await guild.members.fetch(idMembro).catch(() => null);
                     if (membroAlvo) {
-                        //await membroAlvo.roles.add(ID_CARGO_GERAL_ADV).catch(() => {});
+                        await membroAlvo.roles.add(ID_CARGO_GERAL_ADV).catch(() => {});
                         for (const idCargoPunicao of cargosMarcados) {
                             await membroAlvo.roles.add(idCargoPunicao).catch(() => {});
                         }
@@ -477,7 +481,6 @@ module.exports = {
                     ? cargosMarcados.map(id => `<@&${id}>`).join(', ') 
                     : `<@&${ID_CARGO_GERAL_ADV}>`;
 
-                // Busca as informações de tempo dinamicamente do config.json
                 const temposAdvsMarcadas = cargosMarcados.length > 0
                     ? cargosMarcados.map(id => {
                         const configPunicao = config.opcoesPunicao.find(o => o.value === id);
@@ -485,7 +488,6 @@ module.exports = {
                       }).filter(t => t !== '').join('\n')
                     : `• <@&${ID_CARGO_GERAL_ADV}>: *Tempo padrão do regimento*`;
 
-                // Texto oficial publicado no canal de resultados públicos
                 const textoMensagem = 
                     `### ⚖️ DEFERIDO + #${numeroFinalDoCaso}\n` +
                     `> **STATUS JURÍDICO:** SENTENÇA DEFERIDA (PROCEDENTE)\n\n` +
@@ -498,7 +500,6 @@ module.exports = {
 
                 await canalResultados.send({ content: `🔔 **Citação Processual:** <@${idMembro}>\n\n${textoMensagem}` }).catch(err => console.error(err));
 
-                // Envio do Log Simplificado com o novo campo de Motivo
                 try {
                     const canalLogsEspecifico = await guild.channels.fetch('1529134407330562239').catch(() => null);
                     if (canalLogsEspecifico) {
@@ -515,7 +516,6 @@ module.exports = {
                 } catch (err) { console.error(err); }
             }
 
-            // Gerador de Transcript oficial pós-modal
             try {
                 const mensagens = await interaction.channel.messages.fetch({ limit: 100 });
                 let conteudoTexto = `=== TRANSCRIPT OFICIAL DE ATENDIMENTO - CASO #${numeroFinalDoCaso} ===\nMotivo da Decisão: ${motivoDigitado}\n\n`;
@@ -533,39 +533,21 @@ module.exports = {
                 }
             } catch (errTranscript) { console.error(errTranscript); }
 
-            // Resposta oficial aceita para Modals (Evita o erro de timeout/não respondido)
-                        // =====================================================================
-            // 🔒 CORREÇÃO DEFINITIVA DA FINALIZAÇÃO DO MODAL
-            // =====================================================================
-            try {
-                // Força o envio da mensagem na tela para o corregedor ver o aviso dos 10 segundos
-                await interaction.reply({ 
-                    content: `🔒 **Caso Deferido com Sucesso!** Veredicto publicado, justificativa anexada e histórico salvo.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, 
-                    embeds: [], 
-                    components: [] 
-                });
-            } catch (errReply) {
-                // Caso a interação perca o sincronismo, envia como mensagem de texto comum no canal para garantir o cronômetro
-                await interaction.channel.send({
-                    content: `🔒 **Caso Deferido com Sucesso!** Veredicto publicado, justificativa anexada e histórico salvo.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`
-                }).catch(() => {});
-            }
+            // 2. Modifica a resposta inicial (Diferente de antes, agora usamos editReply por causa do deferReply)
+            await interaction.editReply({ 
+                content: `🔒 **Caso Deferido com Sucesso!** Veredicto publicado, justificativa anexada e histórico salvo.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, 
+                embeds: [], 
+                components: [] 
+            }).catch(() => {});
 
-            // Limpa a memória temporária do caso
             memoriaFechamento.delete(channelId);
 
-            // Inicia o cronômetro nativo e seguro para apagar o canal após 10 segundos completos
+            // 3. Executa a deleção limpa após 10 segundos
             setTimeout(() => {
                 if (interaction.channel) {
-                    interaction.channel.delete().catch(err => {
-                        console.error("Não foi possível deletar o canal:", err);
-                    });
+                    interaction.channel.delete().catch(() => {});
                 }
             }, 10000);
-            
-            return;
-            // =====================================================================
-
         }
     },
 };
