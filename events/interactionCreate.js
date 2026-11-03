@@ -252,19 +252,19 @@ module.exports = {
                         await canalResultados.send({ content: `🔔 **Notificação de Arquivamento:** ${listaMencionados}\n\n${textoMensagemIndeferido}` }).catch(err => console.error(err));
 
                         // Log Simplificado na Corregedoria (Denúncia Arquivada)
-                        try {
-                            const canalLogsEspecifico = await guild.channels.fetch('1529134407330562239').catch(() => null);
-                            if (canalLogsEspecifico) {
-                                const textoLogSimplificado = 
-                                    `**QRA:** ${listaMencionados}\n` +
-                                    `**STATUS:** ARQUIVADO / INDEFERIDO\n` +
-                                    `**MOTIVO HISTÓRICO:** Chamado de denúncia encerrado no Caso #${numeroFinalDoCaso}\n` +
-                                    `**MOTIVO:** Total ausência de elementos probatórios concretos ou insuficiência de provas.\n` +
-                                    `**RESPONSÁVEL:** <@${interaction.user.id}>`;
+                        // try {
+                        //     const canalLogsEspecifico = await guild.channels.fetch('1529134407330562239').catch(() => null);
+                        //     if (canalLogsEspecifico) {
+                        //         const textoLogSimplificado = 
+                        //             `**QRA:** ${listaMencionados}\n` +
+                        //             `**STATUS:** ARQUIVADO / INDEFERIDO\n` +
+                        //             `**MOTIVO HISTÓRICO:** Chamado de denúncia encerrado no Caso #${numeroFinalDoCaso}\n` +
+                        //             `**MOTIVO:** Total ausência de elementos probatórios concretos ou insuficiência de provas.\n` +
+                        //             `**RESPONSÁVEL:** <@${interaction.user.id}>`;
 
-                                await canalLogsEspecifico.send({ content: textoLogSimplificado }).catch(err => console.error(err));
-                            }
-                        } catch (err) { console.error(err); }
+                        //         await canalLogsEspecifico.send({ content: textoLogSimplificado }).catch(err => console.error(err));
+                        //     }
+                        // } catch (err) { console.error(err); }
                     }
                 }
 
