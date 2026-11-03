@@ -101,7 +101,7 @@ module.exports = {
                     let canalResultados = guild.channels.cache.get(ID_CANAL_RESULTADOS);
                     const numeroFinalDoCaso = obterProximoCaso();
                     const ID_CANAL_TRANSCRIPTS = "1565194110199930971";
-                    const ID_CARGO_GERAL_ADV = "13947740627062874"; 
+                    //const ID_CARGO_GERAL_ADV = "13947740627062874"; 
 
                     const idMembro = dadosCaso.envolvidos[0];
                                         try {
@@ -120,7 +120,7 @@ module.exports = {
                             }
 
                             // 3. Remove o cargo de advertência geral do servidor
-                            await membroAlvo.roles.remove(ID_CARGO_GERAL_ADV).catch(() => {});
+                            //await membroAlvo.roles.remove(ID_CARGO_GERAL_ADV).catch(() => {});
                         }
                     } catch (err) { 
                         console.error("Erro geral ao processar remoção de cargos na revogação:", err); 
@@ -455,7 +455,7 @@ module.exports = {
             }
 
             const numeroFinalDoCaso = obterProximoCaso();
-            const ID_CARGO_GERAL_ADV = "13947740627062874"; 
+            //const ID_CARGO_GERAL_ADV = "13947740627062874"; 
             const ID_CANAL_TRANSCRIPTS = "1565194110199930971";
 
             const cargosMarcados = dadosCaso.cargosSelecionados || [];
@@ -464,7 +464,7 @@ module.exports = {
                 try {
                     const membroAlvo = await guild.members.fetch(idMembro).catch(() => null);
                     if (membroAlvo) {
-                        await membroAlvo.roles.add(ID_CARGO_GERAL_ADV).catch(() => {});
+                        //await membroAlvo.roles.add(ID_CARGO_GERAL_ADV).catch(() => {});
                         for (const idCargoPunicao of cargosMarcados) {
                             await membroAlvo.roles.add(idCargoPunicao).catch(() => {});
                         }
@@ -534,18 +534,38 @@ module.exports = {
             } catch (errTranscript) { console.error(errTranscript); }
 
             // Resposta oficial aceita para Modals (Evita o erro de timeout/não respondido)
-            await interaction.reply({ 
-                content: `🔒 **Caso Deferido com Sucesso!** Veredicto publicado, justificativa anexada e histórico salvo.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, 
-                embeds: [], 
-                components: [] 
-            }).catch(() => {});
+                        // =====================================================================
+            // 🔒 CORREÇÃO DEFINITIVA DA FINALIZAÇÃO DO MODAL
+            // =====================================================================
+            try {
+                // Força o envio da mensagem na tela para o corregedor ver o aviso dos 10 segundos
+                await interaction.reply({ 
+                    content: `🔒 **Caso Deferido com Sucesso!** Veredicto publicado, justificativa anexada e histórico salvo.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, 
+                    embeds: [], 
+                    components: [] 
+                });
+            } catch (errReply) {
+                // Caso a interação perca o sincronismo, envia como mensagem de texto comum no canal para garantir o cronômetro
+                await interaction.channel.send({
+                    content: `🔒 **Caso Deferido com Sucesso!** Veredicto publicado, justificativa anexada e histórico salvo.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`
+                }).catch(() => {});
+            }
 
+            // Limpa a memória temporária do caso
             memoriaFechamento.delete(channelId);
 
-            // Inicia o cronômetro definitivo de 10 segundos para limpar o canal do Discord
-            return setTimeout(() => {
-                interaction.channel.delete().catch(() => {});
+            // Inicia o cronômetro nativo e seguro para apagar o canal após 10 segundos completos
+            setTimeout(() => {
+                if (interaction.channel) {
+                    interaction.channel.delete().catch(err => {
+                        console.error("Não foi possível deletar o canal:", err);
+                    });
+                }
             }, 10000);
+            
+            return;
+            // =====================================================================
+
         }
     },
 };
