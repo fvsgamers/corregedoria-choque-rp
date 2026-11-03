@@ -459,7 +459,7 @@ module.exports = {
             }
 
             const numeroFinalDoCaso = obterProximoCaso();
-            const ID_CARGO_GERAL_ADV = "13947740627062874"; 
+            //const ID_CARGO_GERAL_ADV = "13947740627062874"; 
             const ID_CANAL_TRANSCRIPTS = "1565194110199930971";
 
             const cargosMarcados = dadosCaso.cargosSelecionados || [];
@@ -468,7 +468,7 @@ module.exports = {
                 try {
                     const membroAlvo = await guild.members.fetch(idMembro).catch(() => null);
                     if (membroAlvo) {
-                        await membroAlvo.roles.add(ID_CARGO_GERAL_ADV).catch(() => {});
+                        //await membroAlvo.roles.add(ID_CARGO_GERAL_ADV).catch(() => {});
                         for (const idCargoPunicao of cargosMarcados) {
                             await membroAlvo.roles.add(idCargoPunicao).catch(() => {});
                         }
@@ -479,14 +479,14 @@ module.exports = {
 
                 const cargosMencionadosString = cargosMarcados.length > 0 
                     ? cargosMarcados.map(id => `<@&${id}>`).join(', ') 
-                    : `<@&${ID_CARGO_GERAL_ADV}>`;
+                    : `Nenhuma Punição Aplicada`;
 
                 const temposAdvsMarcadas = cargosMarcados.length > 0
                     ? cargosMarcados.map(id => {
                         const configPunicao = config.opcoesPunicao.find(o => o.value === id);
                         return configPunicao ? `• <@&${id}>: *${configPunicao.tempo}*` : '';
                       }).filter(t => t !== '').join('\n')
-                    : `• <@&${ID_CARGO_GERAL_ADV}>: *Tempo padrão do regimento*`;
+                    : `• Nenhum Tempo Registrado`;
 
                 const textoMensagem = 
                     `### ⚖️ DEFERIDO + #${numeroFinalDoCaso}\n` +
