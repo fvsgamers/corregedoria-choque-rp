@@ -287,7 +287,7 @@ module.exports = {
                 const canalCriado = await guild.channels.create({
                     name: nomeCanal,
                     type: 0,
-                    //parent: ID_CATEGORIA_TICKETS,
+                    parent: ID_CATEGORIA_TICKETS,
                     permissionOverwrites: regrasPermissao
                 });
 
