@@ -5,7 +5,7 @@ const config = require('../config.json');
 
 // Definição dos canais e categorias oficiais enviados por você
 const ID_CANAL_RESULTADOS = "1529134537018441738"; 
-//const ID_CATEGORIA_TICKETS = "1565178591820386314";
+const ID_CATEGORIA_TICKETS = "1565178591820386314";
 const CAMINHO_CONTADOR = path.join(__dirname, '../contador.txt');
 
 // Banco temporário em memória para salvar as etapas de fechamento de cada canal
