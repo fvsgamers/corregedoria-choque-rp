@@ -374,11 +374,39 @@ module.exports = {
             }
         }
 
+                // =====================================================================
+        // 🔒 FIX: OUVIDO DE BOTÃO DO MODAL REGISTRADO CORRETAMENTE
+        // =====================================================================
         if (interaction.isButton() && interaction.customId === 'btn_abrir_modal_motivo') {
-            const modal = new ModalBuilder().setCustomId('modal_motivo_punicao').setTitle('⚖️ Justificativa da Sentença');
-            const inputMotivo = new TextInputBuilder().setCustomId('txt_motivo_detalhado').setLabel('Descrição/Motivo da Punição (Obrigatório)').setPlaceholder('Digite detalhadamente o motivo/artigo infringido...').setStyle(TextInputStyle.Paragraph).setMinLength(10).setMaxLength(1000).setRequired(true);
-            return await interaction.showModal(modal);
+            try {
+                const modal = new ModalBuilder()
+                    .setCustomId('modal_motivo_punicao')
+                    .setTitle('⚖️ Justificativa da Sentença');
+
+                const inputMotivo = new TextInputBuilder()
+                    .setCustomId('txt_motivo_detalhado')
+                    .setLabel('Descrição/Motivo da Punição (Obrigatório)')
+                    .setPlaceholder('Digite detalhadamente o motivo/artigo infringido...')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setMinLength(10)
+                    .setMaxLength(1000)
+                    .setRequired(true);
+
+                const rowComponente = new ActionRowBuilder().addComponents(inputMotivo);
+                modal.addComponents(rowComponente);
+
+                // Abre a janela pop-up na tela do corregedor imediatamente
+                return await interaction.showModal(modal);
+            } catch (error) {
+                console.error("Erro ao abrir o formulário de motivo:", error);
+                return await interaction.reply({
+                    content: "❌ Não foi possível abrir o formulário. Tente clicar novamente no botão.",
+                    ephemeral: true
+                }).catch(() => {});
+            }
         }
+        // =====================================================================
+
 
         if (interaction.isModalSubmit() && interaction.customId === 'modal_motivo_punicao') {
             const { channelId, guild } = interaction;
