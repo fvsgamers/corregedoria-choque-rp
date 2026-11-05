@@ -1,4 +1,4 @@
-const { Events, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, UserSelectMenuBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { Events, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, UserSelectMenuBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config.json');
@@ -59,13 +59,11 @@ module.exports = {
                     return interaction.reply({ content: "❌ Apenas membros da Corregedoria ou Staff podem definir o veredicto deste caso.", ephemeral: true });
                 }
 
-                // Se for um ticket de revogação e o usuário já selecionou a punição no início, usamos esses dados pré-salvos
                 const dadosExistentes = memoriaFechamento.get(channelId);
                 if (dadosExistentes && dadosExistentes.isRevogacao) {
-                    // Pula a seleção de múltiplos membros (já que o alvo é o próprio criador do ticket)
                     const embedEscolha = new EmbedBuilder()
                         .setTitle("⚖️ ESCOLHA O VEREDICTO DA REVOGAÇÃO")
-                        .setDescription(`Usuário solicitante: <@${dadosExistentes.envolvidos[0]}>\nCargo para revisar: <@&${dadosExistentes.cargoParaRemover}>\n\nEscolha o desfecho deste pedido de revisão:`)
+                        .setDescription(`Usuário solicitante: <@${dadosExistentes.envolvidos}>\nCargo para revisar: <@&${dadosExistentes.cargoParaRemover}>\n\nEscolha o desfecho deste pedido de revisão:`)
                         .setColor(0x2f3136);
 
                     const rowEscolhas = new ActionRowBuilder().addComponents(
@@ -96,41 +94,27 @@ module.exports = {
             if (customId === 'btn_final_deferido') {
                 const dadosCaso = memoriaFechamento.get(channelId);
                 
-                // Se for um processo de revogação, o "Deferido" significa RETIRAR a punição imediatamente
                 if (dadosCaso && dadosCaso.isRevogacao) {
                     let canalResultados = guild.channels.cache.get(ID_CANAL_RESULTADOS);
                     const numeroFinalDoCaso = obterProximoCaso();
                     const ID_CANAL_TRANSCRIPTS = "1565194110199930971";
-                    //const ID_CARGO_GERAL_ADV = "13947740627062874"; 
+                    const ID_CARGO_GERAL_ADV = "13947740627062874"; 
 
-                    const idMembro = dadosCaso.envolvidos[0];
-                                        try {
+                    const idMembro = dadosCaso.envolvidos;
+                    try {
                         const membroAlvo = await guild.members.fetch(idMembro).catch(() => null);
                         if (membroAlvo) {
-                            // 1. CONVERTENDO O VALOR DA MEMÓRIA EM ARRAY CASO VENHA COMO VALOR ÚNICO
-                            const cargosParaRemover = Array.isArray(dadosCaso.cargoParaRemover) 
-                                ? dadosCaso.cargoParaRemover 
-                                : [dadosCaso.cargoParaRemover];
-
-                            // 2. ADICIONADO: REMOVE CADA UM DOS CARGOS ESPECÍFICOS DE ADVERTÊNCIA SELECIONADOS NO INÍCIO
-                            for (const idCargo of cargosParaRemover) {
-                                await membroAlvo.roles.remove(idCargo).catch(err => 
-                                    console.error(`Erro ao remover cargo específico ${idCargo}:`, err)
-                                );
-                            }
-
-                            // 3. Remove o cargo de advertência geral do servidor
-                            //await membroAlvo.roles.remove(ID_CARGO_GERAL_ADV).catch(() => {});
+                            const cargoIdPuro = Array.isArray(dadosCaso.cargoParaRemover) ? dadosCaso.cargoParaRemover[0] : dadosCaso.cargoParaRemover;
+                            if (cargoIdPuro) await membroAlvo.roles.remove(cargoIdPuro).catch(() => {});
+                            await membroAlvo.roles.remove(ID_CARGO_GERAL_ADV).catch(() => {});
                         }
-                    } catch (err) { 
-                        console.error("Erro geral ao processar remoção de cargos na revogação:", err); 
-                    }
+                    } catch (err) { console.error(err); }
 
                     const textoMensagem = 
                         `### ⚖️ REVOGAÇÃO DEFERIDA + #${numeroFinalDoCaso}\n` +
                         `> **STATUS JURÍDICO:** SENTENÇA REFORMADA (PUNIÇÃO REVOGADA)\n\n` +
-                        `A Corregedoria Geral, após revisar a contestação submetida pelo colaborador, determinou o **DEFERIMENTO** do pedido. As sanções anteriores foram anuladas e removidas de sua ficha funcional.\n\n` +
-                        `👤 **Cidadão Beneficiado:** <@${interaction.user.id}>\n` +
+                        `A Corregedoria Geral determinou o **DEFERIMENTO** do pedido. As sanções anteriores foram anuladas e removidas de sua ficha funcional.\n\n` +
+                        `👤 **Cidadão Beneficiado:** <@${idMembro}>\n` +
                         `❌ **Sanção Retirada:** <@&${dadosCaso.cargoParaRemover}>\n\n` +
                         `✍ *Corregedor Responsável:* <@${interaction.user.id}> — <t:${Math.floor(Date.now() / 1000)}:R>`;
 
@@ -138,28 +122,19 @@ module.exports = {
                         await canalResultados.send({ content: `🔔 **Aviso de Revogação:** <@${idMembro}>\n\n${textoMensagem}` }).catch(err => console.error(err));
                     }
 
-                                        // ENVIO DO LOG SIMPLIFICADO DE REVOGAÇÃO DEFERIDA (ACEITA)
+                    // Log simplificado canal revogação
                     try {
                         const canalLogsRevogacao = await guild.channels.fetch('1529134489341788421').catch(() => null);
                         if (canalLogsRevogacao) {
-                            const textoLogRevogacao = 
-                                `### 📝 REVOGAÇÃO DEFERIDA (PUNIÇÃO RETIRADA)\n` +
-                                `**QRA:** <@${idMembro}>\n` +
-                                `**MOTIVO:** Revisão aprovada no Caso #${numeroFinalDoCaso}\n` +
-                                `**ADVERTÊNCIA RETIRADA:** <@&${dadosCaso.cargoParaRemover}>\n` +
-                                `**STATUS:** Cargo removido com sucesso da ficha funcional.\n` +
-                                `**CORREGEDOR RESPONSÁVEL:** <@${interaction.user.id}>`;
-
-                            await canalLogsRevogacao.send({ content: textoLogRevogacao }).catch(err => console.error("Erro ao enviar log de revogação deferida:", err));
+                            const textoLogRevogacao = `### 📝 REVOGAÇÃO DEFERIDA (PUNIÇÃO RETIRADA)\n**QRA:** <@${idMembro}>\n**MOTIVO:** Revisão aprovada no Caso #${numeroFinalDoCaso}\n**ADVERTÊNCIA RETIRADA:** <@&${dadosCaso.cargoParaRemover}>\n**STATUS:** Cargo removido.\n**CORREGEDOR RESPONSÁVEL:** <@${interaction.user.id}>`;
+                            await canalLogsRevogacao.send({ content: textoLogRevogacao }).catch(() => {});
                         }
-                    } catch (err) { console.error("Erro no canal de logs de revogação:", err); }
+                    } catch (e) {}
 
-
-                    // Gera o Transcript em segundo plano
                     try {
                         const mensagens = await interaction.channel.messages.fetch({ limit: 100 });
                         let conteudoTexto = `=== TRANSCRIPT OFICIAL - REVOGAÇÃO ACEITA #${numeroFinalDoCaso} ===\n`;
-                        msgOrdenadas = mensagens.reverse();
+                        const msgOrdenadas = mensagens.reverse();
                         msgOrdenadas.forEach(m => { conteudoTexto += `[${m.createdAt.toLocaleTimeString('pt-BR')}] ${m.author.tag}: ${m.content}\n`; });
                         const bufferTexto = Buffer.from(conteudoTexto, 'utf-8');
                         const canalAuditoria = guild.channels.cache.get(ID_CANAL_TRANSCRIPTS);
@@ -183,21 +158,14 @@ module.exports = {
                 return interaction.update({ content: '🚨 **Selecione as punições aplicáveis abaixo:**', embeds: [], components: [rowAdvs] });
             }
 
-                        // =====================================================================
-            // 🔒 RECONSTRUÇÃO SEGURA: BOTÃO INDEFERIDO COM TRAVA DE SEGURANÇA
-            // =====================================================================
+            // BOTÃO: Veredicto Indeferido (Texto Elaborado + Transcript + Delete em 10s)
             if (customId === 'btn_final_indeferido') {
                 const dadosCaso = memoriaFechamento.get(channelId);
 
-                // 1. TRAVA DE SEGURANÇA: Se o corregedor não marcou os envolvidos no menu antes, impede o travamento
                 if (!dadosCaso) {
-                    return await interaction.reply({
-                        content: "❌ **Erro:** Você precisa selecionar ao menos 1 envolvido no menu de usuários antes de definir o veredicto.",
-                        ephemeral: true
-                    }).catch(() => {});
+            return await interaction.reply({content: "❌ **Erro:** Você precisa selecionar ao menos 1 envolvido no menu de usuários antes de definir o veredicto.", ephemeral: true }).catch(() => {});
                 }
 
-                // 2. Avisa o Discord que começou o processamento pesado
                 await interaction.deferUpdate().catch(() => {});
 
                 const canalResultados = guild.channels.cache.get(ID_CANAL_RESULTADOS);
@@ -207,68 +175,56 @@ module.exports = {
                 if (canalResultados) {
                     const idMembro = dadosCaso.envolvidos;
                     
-                    // --- CASO 1: SE FOR UM TICKET DE REVOGAÇÃO NEGADA ---
                     if (dadosCaso.isRevogacao) {
                         const textoMensagemIndeferido = 
                             `### 🏛️ REVOGAÇÃO INDEFERIDA + #${numeroFinalDoCaso}\n` +
                             `> **STATUS JURÍDICO:** CONTESTAÇÃO REJEITADA (PUNIÇÃO MANTIDA)\n\n` +
-                            `A Corregedoria Geral avaliou os fundamentos do pedido de revisão e determinou o seu **INDEFERIMENTO**. As provas funcionais aplicadas originalmente são válidas e permanecem ativas.\n\n` +
+                            `A Corregedoria Geral avaliou os fundamentos do pedido de revisão e determinou o seu **INDEFERIMENTO**. As sanções originais permanecem ativas.\n\n` +
                             `👤 **Colaborador:** <@${idMembro}>\n` +
                             `⚠️ **Manutenção da Sanção:** <@&${dadosCaso.cargoParaRemover}>\n\n` +
                             `✍️ *Relator Responsável:* \`${interaction.user.tag}\` — <t:${Math.floor(Date.now() / 1000)}:R>`;
 
                         await canalResultados.send({ content: `🔔 **Notificação de Julgamento:** <@${idMembro}>\n\n${textoMensagemIndeferido}` }).catch(err => console.error(err));
 
-                        // Log Simplificado na Corregedoria (Revogação Rejeitada)
+                        try {
+                            const canalLogsRevogacao = await guild.channels.fetch('1529134489341788421').catch(() => null);
+                            if (canalLogsRevogacao) {
+                                const textoLogRevogacaoNegada = `### 📝 REVOGAÇÃO INDEFERIDA (PUNIÇÃO MANTIDA)\n**QRA:** <@${idMembro}>\n**MOTIVO:** Pedido de revisão rejeitado no Caso #${numeroFinalDoCaso}\n**ADVERTÊNCIA MANTIDA:** <@&${dadosCaso.cargoParaRemover}>\n**STATUS:** Sanção ativa.\n**CORREGEDOR RESPONSÁVEL:** <@${interaction.user.id}>`;
+                                await canalLogsRevogacao.send({ content: textoLogRevogacaoNegada }).catch(() => {});
+                            }
+                        } catch (e) {}
+
                         try {
                             const canalLogsEspecifico = await guild.channels.fetch('1529134407330562239').catch(() => null);
                             if (canalLogsEspecifico) {
-                                const textoLogSimplificado = 
-                                    `**QRA:** <@${idMembro}>\n` +
-                                    `**STATUS:** REVOGAÇÃO INDEFERIDA (PUNIÇÃO MANTIDA)\n` +
-                                    `**MOTIVO HISTÓRICO:** Pedido de revisão rejeitado no Caso #${numeroFinalDoCaso}\n` +
-                                    `**SANÇÃO MANTIDA:** <@&${dadosCaso.cargoParaRemover}>\n` +
-                                    `**RESPONSÁVEL:** <@${interaction.user.id}>`;
-
+                                const textoLogSimplificado = `**QRA:** <@${idMembro}>\n**STATUS:** REVOGAÇÃO INDEFERIDA (PUNIÇÃO MANTIDA)\n**MOTIVO HISTÓRICO:** Pedido de revisão rejeitado no Caso #${numeroFinalDoCaso}\n**SANÇÃO MANTIDA:** <@&${dadosCaso.cargoParaRemover}>\n**RESPONSÁVEL:** <@${interaction.user.id}>`;
                                 await canalLogsEspecifico.send({ content: textoLogSimplificado }).catch(err => console.error(err));
                             }
-                        } catch (err) { console.error(err); }
+                        } catch (err) {}
 
                     } else {
-                        // --- CASO 2: SE FOR UMA DENÚNCIA COMUM ARQUIVADA ---
-                        const listaMencionados = Array.isArray(dadosCaso.envolvidos) 
-                            ? dadosCaso.envolvidos.map(id => `<@${id}>`).join(', ') 
-                            : `<@${dadosCaso.envolvidos}>`;
+                        const listaMencionados = Array.isArray(dadosCaso.envolvidos) ? dadosCaso.envolvidos.map(id => `<@${id}>`).join(', ') : `<@${dadosCaso.envolvidos}>`;
 
                         const textoMensagemIndeferido = 
                             `### 🏛️ INDEFERIDO + #${numeroFinalDoCaso}\n` +
-                            `> **STATUS JURÍDICO:** SENTENÇA INDEFERIDA (IMPROCEDENTE)\n\n` +
-                            `A Corregedoria Geral da Cidade, após análise detida dos fatos narrados e verificação da idoneidade material trazida aos autos do chamado, declara o processo **ARQUIVADO**.\n\n` +
+                            `> **STATUS JURÍDICO:** SENTENZA INDEFERIDA (IMPROCEDENTE)\n\n` +
+                            `A Corregedoria Geral da Cidade declara o processo **ARQUIVADO**.\n\n` +
                             `👤 **Membros Citados:** ${listaMencionados}\n\n` +
-                            `⚠️ **Fundamentação da Recusa:**\n` +
-                            `A postulação não reuniu condições mínimas de admissibilidade, sendo rejeitada por **total ausência de elementos probatórios concretos** ou por incompatibilidade técnica.\n\n` +
+                            `⚠️ **Fundamentação da Recusa:**\nA postulação foi rejeitada por **total ausência de elementos probatórios concretos**.\n\n` +
                             `✍️ *Relator Responsável:* \`${interaction.user.tag}\` — <t:${Math.floor(Date.now() / 1000)}:R>`;
 
                         await canalResultados.send({ content: `🔔 **Notificação de Arquivamento:** ${listaMencionados}\n\n${textoMensagemIndeferido}` }).catch(err => console.error(err));
 
-                        // Log Simplificado na Corregedoria (Denúncia Arquivada)
-                        // try {
-                        //     const canalLogsEspecifico = await guild.channels.fetch('1529134407330562239').catch(() => null);
-                        //     if (canalLogsEspecifico) {
-                        //         const textoLogSimplificado = 
-                        //             `**QRA:** ${listaMencionados}\n` +
-                        //             `**STATUS:** ARQUIVADO / INDEFERIDO\n` +
-                        //             `**MOTIVO HISTÓRICO:** Chamado de denúncia encerrado no Caso #${numeroFinalDoCaso}\n` +
-                        //             `**MOTIVO:** Total ausência de elementos probatórios concretos ou insuficiência de provas.\n` +
-                        //             `**RESPONSÁVEL:** <@${interaction.user.id}>`;
-
-                        //         await canalLogsEspecifico.send({ content: textoLogSimplificado }).catch(err => console.error(err));
-                        //     }
-                        // } catch (err) { console.error(err); }
+                        try {
+                            const canalLogsEspecifico = await guild.channels.fetch('1529134407330562239').catch(() => null);
+                            if (canalLogsEspecifico) {
+                                const textoLogSimplificado = `**QRA:** ${listaMencionados}\n**STATUS:** ARQUIVADO / INDEFERIDO\n**MOTIVO HISTÓRICO:** Chamado encerrado no Caso #${numeroFinalDoCaso}\n**MOTIVO:** Ausência de elementos probatórios.\n**RESPONSÁVEL:** <@${interaction.user.id}>`;
+                                await canalLogsEspecifico.send({ content: textoLogSimplificado }).catch(err => console.error(err));
+                            }
+                        } catch (err) {}
                     }
                 }
 
-                // Transcripts gerados em background
                 try {
                     const mensagens = await interaction.channel.messages.fetch({ limit: 100 });
                     let conteudoTexto = `=== TRANSCRIPT OFICIAL DE ATENDIMENTO - CASO INDEFERIDO #${numeroFinalDoCaso} ===\n`;
@@ -276,384 +232,219 @@ module.exports = {
                     msgOrdenadas.forEach(m => { conteudoTexto += `[${m.createdAt.toLocaleTimeString('pt-BR')}] ${m.author.tag}: ${m.content}\n`; });
                     const bufferTexto = Buffer.from(conteudoTexto, 'utf-8');
                     const canalAuditoria = guild.channels.cache.get(ID_CANAL_TRANSCRIPTS);
-                    if (canalAuditoria) {
-                        await canalAuditoria.send({ 
-                            content: `📁 **Histórico:** Caso \`#${numeroFinalDoCaso}\` finalizado por ${interaction.user}.`, 
-                            files: [{ attachment: bufferTexto, name: `transcript-indeferido-${numeroFinalDoCaso}.txt` }] 
-                        }).catch(err => console.error(err));
-                    }
-                } catch (e) { console.error(e); }
+                    if (canalAuditoria) await canalAuditoria.send({ content: `📁 **Histórico:** Caso \`#${numeroFinalDoCaso}\` finalizado por ${interaction.user}.`, files: [{ attachment: bufferTexto, name: `transcript-indeferido-${numeroFinalDoCaso}.txt` }] }).catch(() => {});
+                } catch (e) {}
 
-                // 3. Responde na tela de forma limpa usando editReply
-                await interaction.editReply({ 
-                    content: `🔒 **Caso Indeferido com Sucesso!** Relatório publicado e enviado para a auditoria.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, 
-                    embeds: [], 
-                    components: [] 
-                }).catch(() => {});
-
+                await interaction.editReply({ content: `🔒 **Caso Indeferido com Sucesso!** Relatório publicado e enviado para a auditoria.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, embeds: [], components: [] }).catch(() => {});
                 memoriaFechamento.delete(channelId);
-
-                // 4. Inicia os 10 segundos para deletar o canal
-                return setTimeout(() => {
-                    if (interaction.channel) interaction.channel.delete().catch(() => {});
-                }, 10000);
-            }
-            // =====================================================================
-
-        // --- LÓGICA DE CRIAÇÃO DE NOVOS TICKETS PRIVADOS ---
-        let nomeCanal = "";
-        let cargoAcessoId = "";
-        let embedTicket = new EmbedBuilder();
-        let mencaoCargo = "";
-
-        if (customId === 'btn_corregedoria') {
-            nomeCanal = `⚖️-corregedoria-${user.username}`;
-            cargoAcessoId = config.idCargoCorregedor || "";
-            mencaoCargo = cargoAcessoId ? `<@&${cargoAcessoId}>` : "@Corregedoria";
-
-            embedTicket
-                .setTitle("⚖️ CORREGEDORIA GERAL DA CIDADE")
-                .setDescription(
-                    `Prezado(a) cidadão(ã) ${user},\n\n` +
-                    `Você está no canal oficial de atendimento da **Corregedoria Geral**.\n\n` +
-                    `⚠️ **Garantia de Sigilo:** Nos termos do regimento, todas as informações são confidenciais.\n\n` +
-                    `Para iniciarmos a investigação, **envie abaixo as seguintes informações**:`
-                )
-                .addFields({ name: '📋 Formulário de Abertura', value: `• **Seu Passaporte (ID):**\n• **Nome ou ID do Oficial Envolvido:**\n• **Corporação/Organização:** (Ex: PM, PC)\n• **Relato Detalhado:**\n• **Link de Provas:** (Vídeo anexado no YouTube/Medal)` })
-                .setColor(0xff0000)
-                .setTimestamp();
-        }
-
-        if (customId === 'btn_revogacao') {
-            nomeCanal = `📝-revogacao-${user.username}`;
-            cargoAcessoId = config.idCargoStaff || "";
-            mencaoCargo = cargoAcessoId ? `<@&${cargoAcessoId}>` : "@Staff";
-
-            embedTicket
-                .setTitle("📝 DEPARTAMENTO DE REVISÃO E REVOGAÇÃO")
-                .setDescription(`Olá ${user},\n\nEste canal foi aberto para apresentar sua contestação formal de punições aplicadas no servidor.\n\nPreencha a sua ficha de defesa abaixo:`)
-                .addFields({ name: '📋 Ficha de Contestação', value: `• **Seu Passaporte (ID):**\n• **Qual punição deseja revogar?**\n• **Quem aplicou a punição?**\n• **Sua Justificativa/Defesa:**` })
-                .setColor(0x0000ff)
-                .setTimestamp();
-        }
-
-        if (nomeCanal) {
-            const regrasPermissao = [
-                { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-                { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] },
-                { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }
-            ];
-
-            if (cargoAcessoId && guild.roles.cache.has(cargoAcessoId)) {
-                regrasPermissao.push({ id: cargoAcessoId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] });
+                return setTimeout(() => { if (interaction.channel) interaction.channel.delete().catch(() => {}); }, 10000);
             }
 
-            try {
-                const canalCriado = await guild.channels.create({
-                    name: nomeCanal,
-                    type: 0,
-                    parent: ID_CATEGORIA_TICKETS,
-                    permissionOverwrites: regrasPermissao
-                });
+            // --- LÓGICA DE CRIAÇÃO DE NOVOS TICKETS PRIVADOS ---
+            let nomeCanal = "";
+            let cargoAcessoId = "";
+            let embedTicket = new EmbedBuilder();
+            let mencaoCargo = "";
 
-                await interaction.reply({ content: `✅ Seu canal administrativo foi aberto com sucesso em ${canalCriado}`, ephemeral: true });
+            if (customId === 'btn_corregedoria') {
+                nomeCanal = `⚖️-corregedoria-${user.username}`;
+                cargoAcessoId = config.idCargoCorregedor || "";
+                mencaoCargo = cargoAcessoId ? `<@&${cargoAcessoId}>` : "@Corregedoria";
 
-                const rowFechar = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('btn_fechar_ticket').setLabel('🔒 Fechar Ticket').setStyle(ButtonStyle.Secondary)
-                );
+                embedTicket
+                    .setTitle("⚖️ CORREGEDORIA GERAL DA CIDADE")
+                    .setDescription(`Prezado(a) cidadão(ã) ${user},\n\nVocê está no canal oficial de atendimento da **Corregedoria Geral**.\n\n⚠️ **Garantia de Sigilo:** Nos termos do regimento, todas as informações são confidential.\n\nPara iniciarmos a investigação, **envie abaixo as seguintes informações**:`)
+                    .addFields({ name: '📋 Formulário de Abertura', value: `• **Seu Passaporte (ID):**\n• **Nome ou ID do Oficial Envolvido:**\n• **Corporação/Organização:** (Ex: PM, PC)\n• **Relato Detalhado:**\n• **Link de Provas:** (Vídeo anexado no YouTube/Medal)` })
+                    .setColor(0xff0000)
+                    .setTimestamp();
+            }
 
-                const componentesEnvio = [rowFechar];
+            if (customId === 'btn_revogacao') {
+                nomeCanal = `📝-revogacao-${user.username}`;
+                cargoAcessoId = config.idCargoStaff || "";
+                mencaoCargo = cargoAcessoId ? `<@&${cargoAcessoId}>` : "@Staff";
 
-                if (customId === 'btn_corregedoria') {
-                    const rowMenuCitar = new ActionRowBuilder().addComponents(
-                        new UserSelectMenuBuilder()
-                            .setCustomId('citar_participantes')
-                            .setPlaceholder('⚖️ Selecione até 10 pessoas para a defesa')
-                            .setMinValues(1)
-                            .setMaxValues(10)
-                    );
-                    componentesEnvio.push(rowMenuCitar);
+                embedTicket
+                    .setTitle("📝 DEPARTAMENTO DE REVISÃO E REVOGAÇÃO")
+                    .setDescription(`Olá ${user},\n\nEste canal foi aberto para apresentar sua contestação formal de punições aplicadas no servidor.\n\nPreencha a sua ficha de defesa abaixo:`)
+                    .addFields({ name: '📋 Ficha de Contestação', value: `• **Seu Passaporte (ID):**\n• **Qual punição deseja revogar?**\n• **Quem aplicou a punição?**\n• **Sua Justificativa/Defesa:**` })
+                    .setColor(0x0000ff)
+                    .setTimestamp();
+            }
+
+            if (nomeCanal) {
+                const regrasPermissao = [
+                    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+                    { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] },
+                    { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }
+                ];
+
+                if (cargoAcessoId && guild.roles.cache.has(cargoAcessoId)) {
+                    regrasPermissao.push({ id: cargoAcessoId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] });
                 }
 
-                if (customId === 'btn_revogacao') {
-                    const rowMenuRevogar = new ActionRowBuilder().addComponents(
-                        new StringSelectMenuBuilder()
-                            .setCustomId('selecao_adv_para_revogar')
-                            .setPlaceholder('🚨 Selecione qual advertência deseja revisar...')
-                            .setMinValues(1)
-                            .setMaxValues(1)
-                            .addOptions(config.opcoesPunicao)
-                    );
-                    componentesEnvio.push(rowMenuRevogar);
-                }
+                try {
+                    const canalCriado = await guild.channels.create({ name: nomeCanal, type: 0, parent: ID_CATEGORIA_TICKETS, permissionOverwrites: regrasPermissao });
+                    await interaction.reply({ content: `✅ Seu canal administrativo foi aberto com sucesso em ${canalCriado}`, ephemeral: true });
 
-                await canalCriado.send({ content: mencaoCargo, embeds: [embedTicket], components: componentesEnvio });
-            } catch (error) {
-                console.error("Erro ao criar canal na categoria:", error);
-                await interaction.reply({ content: "❌ Erro: Verifique se o Bot possui a permissão de 'Gerenciar Canais' na categoria alvo.", ephemeral: true });
+                    const rowFechar = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_fechar_ticket').setLabel('🔒 Fechar Ticket').setStyle(ButtonStyle.Secondary));
+                    const componentesEnvio = [rowFechar];
+
+                    if (customId === 'btn_corregedoria') {
+                        const rowMenuCitar = new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId('citar_participantes').setPlaceholder('⚖️ Selecione até 10 pessoas para a defesa').setMinValues(1).setMaxValues(10));
+                        componentesEnvio.push(rowMenuCitar);
+                                        }
+
+                    if (customId === 'btn_revogacao') {
+                        const rowMenuRevogar = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('selecao_adv_para_revogar').setPlaceholder('🚨 Selecione qual advertência deseja revisar...').setMinValues(1).setMaxValues(1) .addOptions(config.opcoesPunicao));
+                        componentesEnvio.push(rowMenuRevogar);
+                    }
+
+                    await canalCriado.send({ content: mencaoCargo, embeds: [embedTicket], components: componentesEnvio });
+                } catch (error) {
+                    console.error(error);
+                    await interaction.reply({ content: "❌ Erro ao criar canal.", ephemeral: true });
+                }
             }
         }
-    }
 
-    // --- 3. GERENCIAMENTO DE SELEÇÃO DE MENUS ---
-    if (interaction.isAnySelectMenu()) {
-        const { customId, values, channelId, guild } = interaction;
+        // --- 3. GERENCIAMENTO DE SELEÇÃO DE MENUS ---
+        if (interaction.isAnySelectMenu()) {
+            const { customId, values, channelId, guild } = interaction;
 
-        if (customId === 'selecao_adv_para_revogar') {
-            const advEscolhidaId = values[0];
-            memoriaFechamento.set(channelId, { 
-                envolvidos: interaction.user.id, 
-                cargoParaRemover: advEscolhidaId,
-                isRevogacao: true 
-            });
-
-            return await interaction.reply({
-                content: `✅ Você selecionou a advertência <@&${advEscolhidaId}> para revisão.\nPreencha os dados do formulário acima detalhadamente e aguarde a Corregedoria avaliar.`,
-            });
-        }
-
-        if (customId === 'citar_participantes') {
-            const temPermissao = config.idCargoCorregedor.some(id => interaction.member.roles.cache.has(id)) || 
-                              interaction.member.permissions.has(PermissionFlagsBits.Administrator);
-
-            if (!temPermissao) {
-                return await interaction.reply({
-                    content: `❌ Apenas membros da **Corregedoria** ou **Administradores** podem adicionar participantes a este ticket.`,
-                    ephemeral: true
-                });
+            if (customId === 'selecao_adv_para_revogar') {
+                memoriaFechamento.set(channelId, { envolvidos: interaction.user.id, cargoParaRemover: values, isRevogacao: true });
+                return await interaction.reply({ content: `✅ Você selecionou a advertência <@&${values}> para revisão.\nPreencha a ficha acima e aguarde um Corregedor.`, });
             }
 
-            await interaction.reply({ content: `🔄 Processando permissões e aplicando acessos...`, ephemeral: true });
+            if (customId === 'citar_participantes') {
+                const temPermissao = config.idCargoCorregedor.some(id => interaction.member.roles.cache.has(id)) || interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+                if (!temPermissao) return await interaction.reply({ content: `❌ Sem permissão.`, ephemeral: true });
 
-            const usuariosSelecionados = interaction.users;
-            const mencoes = usuariosSelecionados.map(user => `<@${user.id}>`).join(', ');
-                            for (const [id, user] of usuariosSelecionados) {
-                    await interaction.channel.permissionOverwrites.create(id, {
-                        ViewChannel: true,
-                        SendMessages: true,
-                        ReadMessageHistory: true
-                    }).catch(err => console.error(err));
+                await interaction.reply({ content: `🔄 Aplicando acessos...`, ephemeral: true });
+                const usuariosSelecionados = interaction.users;
+                const mencoes = usuariosSelecionados.map(user => `<@${user.id}>`).join(', ');
+
+                for (const [id, user] of usuariosSelecionados) {
+                    await interaction.channel.permissionOverwrites.create(id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
                 }
-
-                const timestamp = Math.floor(Date.now() / 1000);
-                
-                return await interaction.channel.send({
-                    content: `✍️ *Participante(s) Convocado(s):* ${mencoes} — por <@${interaction.user.id}> em <t:${timestamp}:R>\n\n` +
-                             `⚠️ **Prezado(a)(s), você foi citado nesta corregedoria.** Fica por meio deste ato convocado(a) a apresentar sua defesa legal mediante os fatos e evidências apresentados na denúncia deste ticket.`
-                });
+                return await interaction.channel.send({ content: `✍️ *Participante(s) Convocado(s):* ${mencoes} — por <@${interaction.user.id}> em <t:${Math.floor(Date.now() / 1000)}:R>\n\n⚠️ **Prezado(a)(s), você foi citado.** Fica convocado(a) a apresentar sua defesa legal.` });
             }
 
-            // Etapa 1: Captura envolvidos marcados ao fechar ticket
             if (customId === 'selecao_membros_caso') {
                 memoriaFechamento.set(channelId, { envolvidos: values });
-
-                const embedEscolha = new EmbedBuilder()
-                    .setTitle("⚖️ ESCOLHA O VEREDICTO FINAL")
-                    .setDescription(`Membros selecionados:\n${values.map(id => `<@${id}>`).join('\n')}\n\nEscolha o desfecho deste atendimento técnico:`)
-                    .setColor(0x2f3136);
-
+                const embedEscolha = new EmbedBuilder().setTitle("⚖️ ESCOLHA O VEREDICTO FINAL").setDescription(`Membros selecionados:\n${values.map(id => `<@${id}>`).join('\n')}\n\nEscolha o desfecho:`).setColor(0x2f3136);
                 const rowEscolhas = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('btn_final_deferido').setLabel('✅ Deferido (Aplicar Punição)').setStyle(ButtonStyle.Success),
                     new ButtonBuilder().setCustomId('btn_final_indeferido').setLabel('❌ Indeferido (Falta de Provas)').setStyle(ButtonStyle.Danger)
                 );
-
                 return interaction.update({ embeds: [embedEscolha], components: [rowEscolhas] });
             }
-                    // Etapa 2: Recebe as advertências e abre a seleção de CARGOS/CURSOS A RETIRAR
-                    if (customId === 'menu_advertencias_multiplas') {
-                        const dadosCaso = memoriaFechamento.get(channelId);
-                        if (!dadosCaso) return interaction.reply({ content: "❌ Erro nas etapas de fechamento. Reabra o menu.", ephemeral: true });
-            
-                        // Salva as punições escolhidas na memória
-                        dadosCaso.cargosSelecionados = values;
-                        memoriaFechamento.set(channelId, dadosCaso);
-            
-                        // Cria o menu de seleção dos cargos/cursos a serem retirados
-                        const menuCursosRetirados = new StringSelectMenuBuilder()
-                            .setCustomId('menu_cursos_retirados_lista')
-                            .setPlaceholder('Selecione quais cursos/cargos serão RETIRADOS...')
-                            .setMinValues(1)
-                            .setMaxValues(config.cargosParaRetirar.length)
-                            .addOptions(config.cargosParaRetirar);
-            
-                        const rowCursos = new ActionRowBuilder().addComponents(menuCursosRetirados);
-            
-                        return interaction.update({ content: '🎓 **Selecione os cursos ou cargos que serão RETIRADOS do infrator:**', embeds: [], components: [rowCursos] });
-                    }
-                        // Etapa 2.5: Recebe os cursos retirados e abre o Modal do Motivo
-                    if (customId === 'menu_cursos_retirados_lista') {
-                        const dadosCaso = memoriaFechamento.get(channelId);
-                        if (!dadosCaso) return interaction.reply({ content: "❌ Erro nas etapas de fechamento. Reabra o menu.", ephemeral: true });
-            
-                        // Salva os cursos/cargos a retirar na memória
-                        dadosCaso.cursosParaRemoverEfetivo = values;
-                        memoriaFechamento.set(channelId, dadosCaso);
-            
-                        // Abre o Modal (Formulário Pop-up) do Motivo
-                        const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-                        
-                        const modal = new ModalBuilder()
-                            .setCustomId('modal_motivo_punicao')
-                            .setTitle('⚖️ Justificativa da Sentença');
-            
-                        const inputMotivo = new TextInputBuilder()
-                            .setCustomId('txt_motivo_detalhado')
-                            .setLabel('Descrição/Motivo da Punição (Obrigatório)')
-                            .setPlaceholder('Digite detalhadamente o motivo/artigo infringido...')
-                            .setStyle(TextInputStyle.Paragraph)
-                            .setMinLength(10)
-                            .setMaxLength(1000)
-                            .setRequired(true);
-            
-                        const rowComponente = new ActionRowBuilder().addComponents(inputMotivo);
-                        modal.addComponents(rowComponente);
-            
-                        return await interaction.showModal(modal);
-                    }
+
+            if (customId === 'menu_advertencias_multiplas') {
+                const dadosCaso = memoriaFechamento.get(channelId);
+                if (!dadosCaso) return interaction.reply({ content: "❌ Caso expirou.", ephemeral: true });
+
+                dadosCaso.cargosSelecionados = values;
+                memoriaFechamento.set(channelId, dadosCaso);
+
+                const menuCursos = new StringSelectMenuBuilder()
+                    .setCustomId('menu_cursos_retirados_lista')
+                    .setPlaceholder('Selecione quais cursos/cargos serão RETIRADOS...')
+                    .setMinValues(1)
+                    .setMaxValues(config.cargosParaRetirar.length)
+                    .addOptions(config.cargosParaRetirar);
+
+                return interaction.update({ content: '🎓 **Selecione os cursos ou cargos que serão RETIRADOS do infrator:**', embeds: [], components: [new ActionRowBuilder().addComponents(menuCursos)] });
+            }
+
+            if (customId === 'menu_cursos_retirados_lista') {
+                const dadosCaso = memoriaFechamento.get(channelId);
+                if (!dadosCaso) return interaction.reply({ content: "❌ Caso expirou.", ephemeral: true });
+
+                dadosCaso.cursosParaRemoverEfetivo = values;
+                memoriaFechamento.set(channelId, dadosCaso);
+
+                const btnModal = new ButtonBuilder()
+                    .setCustomId('btn_abrir_modal_motivo')
+                    .setLabel('✍️ Escrever Motivo da Sentença (Obrigatório)')
+                    .setStyle(ButtonStyle.Primary);
+
+                return interaction.update({ content: '✅ **Cargos e cursos definidos com sucesso!** Clique no botão abaixo para preencher a fundamentação obrigatória da sentença:', components: [new ActionRowBuilder().addComponents(btnModal)] });
+            }
         }
-                // --- 4. RECEBIMENTO DO FORMULÁRIO (MODAL) ---
-                // =====================================================================
-        // 🔒 FIX DEFINITIVO: MODAL COM DEFERREPLY PARA ELIMINAR O ERRO DE TEMPO
-        // =====================================================================
+
+        if (interaction.isButton() && interaction.customId === 'btn_abrir_modal_motivo') {
+            const modal = new ModalBuilder().setCustomId('modal_motivo_punicao').setTitle('⚖️ Justificativa da Sentença');
+            const inputMotivo = new TextInputBuilder().setCustomId('txt_motivo_detalhado').setLabel('Descrição/Motivo da Punição (Obrigatório)').setPlaceholder('Digite detalhadamente o motivo/artigo infringido...').setStyle(TextInputStyle.Paragraph).setMinLength(10).setMaxLength(1000).setRequired(true);
+            return await interaction.showModal(modal);
+        }
+
         if (interaction.isModalSubmit() && interaction.customId === 'modal_motivo_punicao') {
             const { channelId, guild } = interaction;
             
-            // 1. Avisa IMEDIATAMENTE o Discord que o formulário foi recebido (Evita o erro de tempo)
             await interaction.deferReply().catch(() => {});
-
+            
             const dadosCaso = memoriaFechamento.get(channelId);
-            if (!dadosCaso) {
-                return interaction.editReply({ content: "❌ Dados do caso expiraram ou não foram encontrados." });
-            }
+            if (!dadosCaso) return interaction.editReply({ content: "❌ Dados expirados." });
 
-            // Captura o motivo obrigatório do formulário
             const motivoDigitado = interaction.fields.getTextInputValue('txt_motivo_detalhado');
-
             let canalResultados = guild.channels.cache.get(ID_CANAL_RESULTADOS);
-            if (!canalResultados) {
-                try { 
-                    canalResultados = await guild.channels.fetch(ID_CANAL_RESULTADOS); 
-                } catch (e) {
-                    canalResultados = guild.channels.cache.find(c => c.name === "resultados-corregedoria" || c.name === "logs-resultados");
-                }
-            }
-
-            if (!canalResultados) {
-                return interaction.editReply({ content: "❌ Erro: O canal de resultados não pôde ser localizado." });
-            }
+            if (!canalResultados) { try { canalResultados = await guild.channels.fetch(ID_CANAL_RESULTADOS); } catch (e) {} }
 
             const numeroFinalDoCaso = obterProximoCaso();
-            //const ID_CARGO_GERAL_ADV = "13947740627062874"; 
+            const ID_CARGO_GERAL_ADV = "13947740627062874"; 
             const ID_CANAL_TRANSCRIPTS = "1565194110199930971";
 
-            const cargosMarcados = dadosCaso.cargosSelecionados || [];
-
-                        // Resgata as duas listas salvas na memória
             const cargosMarcados = dadosCaso.cargosSelecionados || [];
             const cursosRetiradosMarcados = dadosCaso.cursosParaRemoverEfetivo || [];
 
             for (const idMembro of dadosCaso.envolvidos) {
                 try {
-                    const membroAlvo = await guild.members.fetch(idMembro).catch(() => null);
-                    if (membroAlvo) {
-                        // 1. Aplica o cargo geral e as punições selecionadas
-                        await membroAlvo.roles.add(ID_CARGO_GERAL_ADV).catch(() => {});
-                        for (const idCargoPunicao of cargosMarcados) {
-                            await membroAlvo.roles.add(idCargoPunicao).catch(() => {});
-                        }
-
-                        // 2. NOVO: Remove os cursos/cargos selecionados do perfil dele no Discord
-                        for (const idCurso of cursosRetiradosMarcados) {
-                            if (idCurso !== 'nenhum') {
-                                await membroAlvo.roles.remove(idCurso).catch(() => {});
-                            }
-                        }
+                    const miembroAlvo = await guild.members.fetch(idMembro).catch(() => null);
+                    if (miembroAlvo) {
+                        await miembroAlvo.roles.add(ID_CARGO_GERAL_ADV).catch(() => {});
+                        for (const idCargoPunicao of cargosMarcados) { await miembroAlvo.roles.add(idCargoPunicao).catch(() => {}); }
+                        for (const idCurso of cursosRetiradosMarcados) { if (idCurso !== 'nenhum') await miembroAlvo.roles.remove(idCurso).catch(() => {}); }
                     }
                 } catch (err) { console.error(err); }
 
-                const cargosMencionadosString = cargosMarcados.length > 0 
-                    ? cargosMarcados.map(id => `<@&${id}>`).join(', ') 
-                    : `Nenhuma punição aplicada`;
+                const cargosMencionadosString = cargosMarcados.length > 0 ? cargosMarcados.map(id => `<@&${id}>`).join(', ') : `Nenhuma punição aplicada`;
+                const temposAdvsMarcadas = cargosMarcados.length > 0 ? cargosMarcados.map(id => { const configPunicao = config.opcoesPunicao.find(o => o.value === id); return configPunicao ? `• <@&${id}>: *${configPunicao.tempo}*` : ''; }).filter(t => t !== '').join('\n') : `Nenhum tempo registrado`;
+                const textoCursosRemovidosString = cursosRetiradosMarcados.filter(id => id !== 'nenhum').length > 0 ? cursosRetiradosMarcados.filter(id => id !== 'nenhum').map(id => `<@&${id}>`).join(', ') : `Nenhum curso ou cargo retirado`;
 
-                const temposAdvsMarcadas = cargosMarcados.length > 0
-                    ? cargosMarcados.map(id => {
-                        const configPunicao = config.opcoesPunicao.find(o => o.value === id);
-                        return configPunicao ? `• <@&${id}>: *${configPunicao.tempo}*` : '';
-                      }).filter(t => t !== '').join('\n')
-                    : `Nenhum tempo registrado`;
-
-                // Formata o texto de exibição dos cursos removidos para o relatório
-                const textoCursosRemovidosString = cursosRetiradosMarcados.filter(id => id !== 'nenhum').length > 0
-                    ? cursosRetiradosMarcados.filter(id => id !== 'nenhum').map(id => `<@&${id}>`).join(', ')
-                    : `Nenhum curso ou cargo retirado`;
-
-                // TEXTO OFICIAL ATUALIZADO COM OS CURSOS RETIRADOS
                 const textoMensagem = 
                     `### ⚖️ DEFERIDO + #${numeroFinalDoCaso}\n` +
                     `> **STATUS JURÍDICO:** SENTENÇA DEFERIDA (PROCEDENTE)\n\n` +
-                    `O Departamento de Controle Interno e Corregedoria Geral concluiu a avaliação regulamentar do presente protocolo de ocorrência.\n\n` +
                     `👤 **Infrator Penalizado:** <@${idMembro}>\n\n` +
                     `📝 **Motivação Técnico-Regulamentar:**\n> ${motivoDigitado}\n\n` +
                     `⚠️ **Sanções Regimentais Aplicadas:**\n${cargosMencionadosString}\n\n` +
-                    `🎓 **Cursos/Cargos Retirados:**\n${textoCursosRemovidosString}\n\n` + // Nova linha inserida no relatório principal
-                    `*Determina-se a averbação imediata deste veredicto na ficha funcional do servidor. Notificação processual expedida.*\n\n` +
+                    `🎓 **Cursos/Cargos Retirados:**\n${textoCursosRemovidosString}\n\n` +
                     `✍️ *Relator Responsible:* <@${interaction.user.id}> — <t:${Math.floor(Date.now() / 1000)}:R>`;
 
-                await canalResultados.send({ content: `🔔 **Citação Processual:** <@${idMembro}>\n\n${textoMensagem}` }).catch(err => console.error(err));
+                if (canalResultados) await canalResultados.send({ content: `🔔 **Citação Processual:** <@${idMembro}>\n\n${textoMensagem}` }).catch(() => {});
 
-                // SEU LOG SIMPLIFICADO DE ADVERTÊNCIA COM A NOVA LINHA DE CURSOS RETIRADOS
                 try {
                     const canalLogsEspecifico = await guild.channels.fetch('1529134407330562239').catch(() => null);
                     if (canalLogsEspecifico) {
-                        const textoLogSimplificado = 
-                            `**QRA:** <@${idMembro}>\n` +
-                            `**MOTIVO HISTÓRICO:** Caso corregedoria #${numeroFinalDoCaso}\n` +
-                            `**MOTIVO:** ${motivoDigitado}\n` + 
-                            `**ADVERTÊNCIA APLICADA:** ${cargosMencionadosString}\n` +
-                            `**TEMPO DE VIGÊNCIA:** ${temposAdvsMarcadas}\n` +
-                            `**CURSOS RETIRADOS:** ${textoCursosRemovidosString}\n` + // Nova linha adicionada aqui
-                            `**RESPONSÁVEL:** <@${interaction.user.id}>`;
-
-                        await canalLogsEspecifico.send({ content: textoLogSimplificado }).catch(err => console.error(err));
+                        const textoLogSimplificado = `**QRA:** <@${idMembro}>\n**MOTIVO HISTÓRICO:** Caso corregedoria #${numeroFinalDoCaso}\n**MOTIVO:** ${motivoDigitado}\n**ADVERTÊNCIA APLICADA:** ${cargosMencionadosString}\n**TEMPO DE VIGÊNCIA:** ${temposAdvsMarcadas}\n**CURSOS RETIRADOS:** ${textoCursosRemovidosString}\n**RESPONSÁVEL:** <@${interaction.user.id}>`;
+                        await canalLogsEspecifico.send({ content: textoLogSimplificado }).catch(() => {});
                     }
-                } catch (err) { console.error(err); }
+                } catch (err) {}
             }
 
             try {
                 const mensagens = await interaction.channel.messages.fetch({ limit: 100 });
-                let conteudoTexto = `=== TRANSCRIPT OFICIAL DE ATENDIMENTO - CASO #${numeroFinalDoCaso} ===\nMotivo da Decisão: ${motivoDigitado}\n\n`;
-                const msgOrdenadas = mensagens.reverse();
-                msgOrdenadas.forEach(m => { 
-                    conteudoTexto += `[${m.createdAt.toLocaleTimeString('pt-BR')}] ${m.author.tag}: ${m.content}\n`; 
-                });
-                const bufferTexto = Buffer.from(conteudoTexto, 'utf-8');
-                const canalAuditoria = guild.channels.cache.get(ID_CANAL_TRANSCRIPTS) || await guild.channels.fetch(ID_CANAL_TRANSCRIPTS).catch(() => null);
-                if (canalAuditoria) {
-                    await canalAuditoria.send({ 
-                        content: `📁 **Histórico de Arquivamento:** Caso \`#${numeroFinalDoCaso}\` finalizado por ${interaction.user}.`, 
-                        files: [{ attachment: bufferTexto, name: `transcript-caso-${numeroFinalDoCaso}.txt` }] 
-                    }).catch(err => console.error(err));
-                }
-            } catch (errTranscript) { console.error(errTranscript); }
+                let conteudoTexto = `=== TRANSCRIPT OFICIAL DE ATENDIMENTO - CASO #${numeroFinalDoCaso} ===\n`;
+                                const msgOrdenadas = mensagens.reverse();
+                msgOrdenadas.forEach(m => { conteudoTexto += `[${m.createdAt.toLocaleTimeString('pt-BR')}] ${m.author.tag}: ${m.content}\n`; });
+                const canalAuditoria = guild.channels.cache.get(ID_CANAL_TRANSCRIPTS);
+                if (canalAuditoria) await canalAuditoria.send({ content: `📁 **Histórico:** Caso \`#${numeroFinalDoCaso}\`.`, files: [{ attachment: Buffer.from(conteudoTexto, 'utf-8'), name: `transcript-caso-${numeroFinalDoCaso}.txt` }] }).catch(() => {});
+            } catch (errTranscript) {}
 
-            // 2. Modifica a resposta inicial (Diferente de antes, agora usamos editReply por causa do deferReply)
-            await interaction.editReply({ 
-                content: `🔒 **Caso Deferido com Sucesso!** Veredicto publicado, justificativa anexada e histórico salvo.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, 
-                embeds: [], 
-                components: [] 
-            }).catch(() => {});
-
+            await interaction.editReply({ content: `🔒 **Caso Deferido com Sucesso!** Veredicto publicado, justificativa anexada e histórico salvo.\n⚠️ *Este canal será permanentemente deletado em 10 segundos.*`, embeds: [], components: [] }).catch(() => {});
             memoriaFechamento.delete(channelId);
-
-            // 3. Executa a deleção limpa após 10 segundos
-            setTimeout(() => {
-                if (interaction.channel) {
-                    interaction.channel.delete().catch(() => {});
-                }
-            }, 10000);
+            return setTimeout(() => { if (interaction.channel) interaction.channel.delete().catch(() => {}); }, 10000);
         }
     },
 };
-
-
-
