@@ -35,5 +35,11 @@
       "emoji": "🚫",
       "tempo": "Ficha sob análise técnica / Sujeito a Desligamento"
     }
+  ],
+  "cargosParaRetirar": [
+    { "label": "Curso de Modulação", "value": "1394767564105580714" },
+    { "label": "Curso de Abordagem e Posicionamento", "value": "1394767602017894561" },
+    { "label": "Cargo de Prisão", "value": "1394767688433405982" },
+    { "label": "Nenhum Curso / Manter Todos", "value": "nenhum" }
   ]
 }
