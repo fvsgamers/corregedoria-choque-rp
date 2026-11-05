@@ -459,38 +459,57 @@ module.exports = {
 
                 return interaction.update({ embeds: [embedEscolha], components: [rowEscolhas] });
             }
-                        // Etapa 2: Abre o Modal Obrigatório para digitar o motivo da punição
-            if (customId === 'menu_advertencias_multiplas') {
-                const dadosCaso = memoriaFechamento.get(channelId);
-                if (!dadosCaso) return interaction.reply({ content: "❌ Erro nas etapas de fechamento. Reabra o menu.", ephemeral: true });
-
-                // Salva temporariamente os cargos selecionados no menu para usar depois
-                dadosCaso.cargosSelecionados = values;
-                memoriaFechamento.set(channelId, dadosCaso);
-
-                // Criando o Modal (Formulário Pop-up)
-                const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-                
-                const modal = new ModalBuilder()
-                    .setCustomId('modal_motivo_punicao')
-                    .setTitle('⚖️ Justificativa da Sentença');
-
-                const inputMotivo = new TextInputBuilder()
-                    .setCustomId('txt_motivo_detalhado')
-                    .setLabel('Descrição/Motivo da Punição (Obrigatório)')
-                    .setPlaceholder('Digite detalhadamente o motivo/artigo infringido...')
-                    .setStyle(TextInputStyle.Paragraph)
-                    .setMinLength(10) // Evita que coloquem apenas pontinhos ou deixem em branco
-                    .setMaxLength(1000)
-                    .setRequired(true); // Torna o campo estritamente obrigatório
-
-                const rowComponente = new ActionRowBuilder().addComponents(inputMotivo);
-                modal.addComponents(rowComponente);
-
-                // Abre o pop-up na tela do corregedor
-                return await interaction.showModal(modal);
-            }
+                    // Etapa 2: Recebe as advertências e abre a seleção de CARGOS/CURSOS A RETIRAR
+                    if (customId === 'menu_advertencias_multiplas') {
+                        const dadosCaso = memoriaFechamento.get(channelId);
+                        if (!dadosCaso) return interaction.reply({ content: "❌ Erro nas etapas de fechamento. Reabra o menu.", ephemeral: true });
             
+                        // Salva as punições escolhidas na memória
+                        dadosCaso.cargosSelecionados = values;
+                        memoriaFechamento.set(channelId, dadosCaso);
+            
+                        // Cria o menu de seleção dos cargos/cursos a serem retirados
+                        const menuCursosRetirados = new StringSelectMenuBuilder()
+                            .setCustomId('menu_cursos_retirados_lista')
+                            .setPlaceholder('Selecione quais cursos/cargos serão RETIRADOS...')
+                            .setMinValues(1)
+                            .setMaxValues(config.cargosParaRetirar.length)
+                            .addOptions(config.cargosParaRetirar);
+            
+                        const rowCursos = new ActionRowBuilder().addComponents(menuCursosRetirados);
+            
+                        return interaction.update({ content: '🎓 **Selecione os cursos ou cargos que serão RETIRADOS do infrator:**', embeds: [], components: [rowCursos] });
+                    }
+                        // Etapa 2.5: Recebe os cursos retirados e abre o Modal do Motivo
+                    if (customId === 'menu_cursos_retirados_lista') {
+                        const dadosCaso = memoriaFechamento.get(channelId);
+                        if (!dadosCaso) return interaction.reply({ content: "❌ Erro nas etapas de fechamento. Reabra o menu.", ephemeral: true });
+            
+                        // Salva os cursos/cargos a retirar na memória
+                        dadosCaso.cursosParaRemoverEfetivo = values;
+                        memoriaFechamento.set(channelId, dadosCaso);
+            
+                        // Abre o Modal (Formulário Pop-up) do Motivo
+                        const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+                        
+                        const modal = new ModalBuilder()
+                            .setCustomId('modal_motivo_punicao')
+                            .setTitle('⚖️ Justificativa da Sentença');
+            
+                        const inputMotivo = new TextInputBuilder()
+                            .setCustomId('txt_motivo_detalhado')
+                            .setLabel('Descrição/Motivo da Punição (Obrigatório)')
+                            .setPlaceholder('Digite detalhadamente o motivo/artigo infringido...')
+                            .setStyle(TextInputStyle.Paragraph)
+                            .setMinLength(10)
+                            .setMaxLength(1000)
+                            .setRequired(true);
+            
+                        const rowComponente = new ActionRowBuilder().addComponents(inputMotivo);
+                        modal.addComponents(rowComponente);
+            
+                        return await interaction.showModal(modal);
+                    }
         }
                 // --- 4. RECEBIMENTO DO FORMULÁRIO (MODAL) ---
                 // =====================================================================
@@ -529,42 +548,60 @@ module.exports = {
 
             const cargosMarcados = dadosCaso.cargosSelecionados || [];
 
+                        // Resgata as duas listas salvas na memória
+            const cargosMarcados = dadosCaso.cargosSelecionados || [];
+            const cursosRetiradosMarcados = dadosCaso.cursosParaRemoverEfetivo || [];
+
             for (const idMembro of dadosCaso.envolvidos) {
                 try {
                     const membroAlvo = await guild.members.fetch(idMembro).catch(() => null);
                     if (membroAlvo) {
-                        //await membroAlvo.roles.add(ID_CARGO_GERAL_ADV).catch(() => {});
+                        // 1. Aplica o cargo geral e as punições selecionadas
+                        await membroAlvo.roles.add(ID_CARGO_GERAL_ADV).catch(() => {});
                         for (const idCargoPunicao of cargosMarcados) {
                             await membroAlvo.roles.add(idCargoPunicao).catch(() => {});
                         }
+
+                        // 2. NOVO: Remove os cursos/cargos selecionados do perfil dele no Discord
+                        for (const idCurso of cursosRetiradosMarcados) {
+                            if (idCurso !== 'nenhum') {
+                                await membroAlvo.roles.remove(idCurso).catch(() => {});
+                            }
+                        }
                     }
-                } catch (err) { 
-                    console.error(`Falha ao setar cargos no membro ${idMembro}:`, err); 
-                }
+                } catch (err) { console.error(err); }
 
                 const cargosMencionadosString = cargosMarcados.length > 0 
                     ? cargosMarcados.map(id => `<@&${id}>`).join(', ') 
-                    : `Nenhuma Punição Aplicada`;
+                    : `Nenhuma punição aplicada`;
 
                 const temposAdvsMarcadas = cargosMarcados.length > 0
                     ? cargosMarcados.map(id => {
                         const configPunicao = config.opcoesPunicao.find(o => o.value === id);
                         return configPunicao ? `• <@&${id}>: *${configPunicao.tempo}*` : '';
                       }).filter(t => t !== '').join('\n')
-                    : `• Nenhum Tempo Registrado`;
+                    : `Nenhum tempo registrado`;
 
+                // Formata o texto de exibição dos cursos removidos para o relatório
+                const textoCursosRemovidosString = cursosRetiradosMarcados.filter(id => id !== 'nenhum').length > 0
+                    ? cursosRetiradosMarcados.filter(id => id !== 'nenhum').map(id => `<@&${id}>`).join(', ')
+                    : `Nenhum curso ou cargo retirado`;
+
+                // TEXTO OFICIAL ATUALIZADO COM OS CURSOS RETIRADOS
                 const textoMensagem = 
                     `### ⚖️ DEFERIDO + #${numeroFinalDoCaso}\n` +
                     `> **STATUS JURÍDICO:** SENTENÇA DEFERIDA (PROCEDENTE)\n\n` +
-                    `O Departamento de Controle Interno e Corregedoria Geral concluiu a avaliação regulamentar do presente protocolo de ocorrência. Com base no acervo probatório submetido, foi constatado desvio formal de conduta administrativa.\n\n` +
+                    `O Departamento de Controle Interno e Corregedoria Geral concluiu a avaliação regulamentar do presente protocolo de ocorrência.\n\n` +
                     `👤 **Infrator Penalizado:** <@${idMembro}>\n\n` +
                     `📝 **Motivação Técnico-Regulamentar:**\n> ${motivoDigitado}\n\n` +
                     `⚠️ **Sanções Regimentais Aplicadas:**\n${cargosMencionadosString}\n\n` +
+                    `🎓 **Cursos/Cargos Retirados:**\n${textoCursosRemovidosString}\n\n` + // Nova linha inserida no relatório principal
                     `*Determina-se a averbação imediata deste veredicto na ficha funcional do servidor. Notificação processual expedida.*\n\n` +
                     `✍️ *Relator Responsible:* <@${interaction.user.id}> — <t:${Math.floor(Date.now() / 1000)}:R>`;
 
                 await canalResultados.send({ content: `🔔 **Citação Processual:** <@${idMembro}>\n\n${textoMensagem}` }).catch(err => console.error(err));
 
+                // SEU LOG SIMPLIFICADO DE ADVERTÊNCIA COM A NOVA LINHA DE CURSOS RETIRADOS
                 try {
                     const canalLogsEspecifico = await guild.channels.fetch('1529134407330562239').catch(() => null);
                     if (canalLogsEspecifico) {
@@ -574,6 +611,7 @@ module.exports = {
                             `**MOTIVO:** ${motivoDigitado}\n` + 
                             `**ADVERTÊNCIA APLICADA:** ${cargosMencionadosString}\n` +
                             `**TEMPO DE VIGÊNCIA:** ${temposAdvsMarcadas}\n` +
+                            `**CURSOS RETIRADOS:** ${textoCursosRemovidosString}\n` + // Nova linha adicionada aqui
                             `**RESPONSÁVEL:** <@${interaction.user.id}>`;
 
                         await canalLogsEspecifico.send({ content: textoLogSimplificado }).catch(err => console.error(err));
